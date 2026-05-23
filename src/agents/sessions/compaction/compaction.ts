@@ -13,6 +13,7 @@ import {
   prepareCompaction as prepareCompactionCore,
   serializeConversation,
   shouldCompact,
+  openClawAgentCoreRuntime,
   type CompactionDetails,
   type CompactionPreparation,
   type CompactionResult,
@@ -78,6 +79,7 @@ export async function generateSummary(
       previousSummary,
       thinkingLevel,
       streamFn as unknown as CoreStreamFn | undefined,
+      openClawAgentCoreRuntime,
     ),
   );
 }
@@ -102,6 +104,7 @@ export async function compact(
       signal,
       thinkingLevel,
       streamFn as unknown as CoreStreamFn | undefined,
+      openClawAgentCoreRuntime,
     ),
   );
 }

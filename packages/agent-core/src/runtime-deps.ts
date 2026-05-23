@@ -1,43 +1,34 @@
-import type { CompleteSimpleFn, StreamFn, Tool, ToolCall, ValidateToolArgumentsFn } from "./llm.js";
+import type { CompleteSimpleFn, StreamFn } from "./llm.js";
 
 export interface AgentCoreRuntimeDeps {
-  streamSimple?: StreamFn;
-  completeSimple?: CompleteSimpleFn;
-  validateToolArguments?: ValidateToolArgumentsFn;
-}
-
-const runtimeDeps: AgentCoreRuntimeDeps = {};
-
-export function configureAgentCoreRuntime(deps: AgentCoreRuntimeDeps): void {
-  Object.assign(runtimeDeps, deps);
+  streamSimple: StreamFn;
+  completeSimple: CompleteSimpleFn;
 }
 
 function missingRuntimeDep(name: keyof AgentCoreRuntimeDeps): Error {
   return new Error(
-    `@openclaw/agent-core runtime dependency "${name}" is not configured. Import OpenClaw's agent runtime facade or pass the dependency explicitly.`,
+    `@openclaw/agent-core runtime dependency "${name}" is not configured. Pass an AgentCoreRuntimeDeps instance or a streamFn explicitly.`,
   );
 }
 
-export function resolveAgentCoreStreamFn(streamFn?: StreamFn): StreamFn {
+export function resolveAgentCoreStreamFn(
+  runtime: Partial<AgentCoreRuntimeDeps> | undefined,
+  streamFn?: StreamFn,
+): StreamFn {
   if (streamFn) {
     return streamFn;
   }
-  if (runtimeDeps.streamSimple) {
-    return runtimeDeps.streamSimple;
+  if (runtime?.streamSimple) {
+    return runtime.streamSimple;
   }
   throw missingRuntimeDep("streamSimple");
 }
 
-export function resolveAgentCoreCompleteFn(): CompleteSimpleFn {
-  if (runtimeDeps.completeSimple) {
-    return runtimeDeps.completeSimple;
+export function resolveAgentCoreCompleteFn(
+  runtime: Partial<AgentCoreRuntimeDeps> | undefined,
+): CompleteSimpleFn {
+  if (runtime?.completeSimple) {
+    return runtime.completeSimple;
   }
   throw missingRuntimeDep("completeSimple");
-}
-
-export function validateAgentCoreToolArguments(tool: Tool, toolCall: ToolCall): unknown {
-  if (runtimeDeps.validateToolArguments) {
-    return runtimeDeps.validateToolArguments(tool, toolCall);
-  }
-  throw missingRuntimeDep("validateToolArguments");
 }

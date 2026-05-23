@@ -8,7 +8,7 @@ import {
   type ThinkingBudgets,
   type Transport,
 } from "./llm.js";
-import { resolveAgentCoreStreamFn } from "./runtime-deps.js";
+import { type AgentCoreRuntimeDeps, resolveAgentCoreStreamFn } from "./runtime-deps.js";
 import type {
   AfterToolCallContext,
   AfterToolCallResult,
@@ -105,6 +105,7 @@ export interface AgentOptions {
   >;
   convertToLlm?: (messages: AgentMessage[]) => Message[] | Promise<Message[]>;
   transformContext?: (messages: AgentMessage[], signal?: AbortSignal) => Promise<AgentMessage[]>;
+  runtime?: Partial<AgentCoreRuntimeDeps>;
   streamFn?: StreamFn;
   getApiKey?: (provider: string) => Promise<string | undefined> | string | undefined;
   onPayload?: SimpleStreamOptions["onPayload"];
@@ -190,6 +191,7 @@ export class Agent {
     messages: AgentMessage[],
     signal?: AbortSignal,
   ) => Promise<AgentMessage[]>;
+  public runtime?: Partial<AgentCoreRuntimeDeps>;
   public streamFn: StreamFn;
   public getApiKey?: (provider: string) => Promise<string | undefined> | string | undefined;
   public onPayload?: SimpleStreamOptions["onPayload"];
@@ -221,7 +223,8 @@ export class Agent {
     this.mutableState = createMutableAgentState(options.initialState);
     this.convertToLlm = options.convertToLlm ?? defaultConvertToLlm;
     this.transformContext = options.transformContext;
-    this.streamFn = resolveAgentCoreStreamFn(options.streamFn);
+    this.runtime = options.runtime;
+    this.streamFn = resolveAgentCoreStreamFn(options.runtime, options.streamFn);
     this.getApiKey = options.getApiKey;
     this.onPayload = options.onPayload;
     this.onResponse = options.onResponse;

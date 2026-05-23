@@ -2,6 +2,7 @@ import type { Model } from "openclaw/plugin-sdk/llm";
 import {
   collectEntriesForBranchSummaryFromBranches,
   generateBranchSummary as generateBranchSummaryCore,
+  openClawAgentCoreRuntime,
   prepareBranchEntries,
   type BranchPreparation,
   type BranchSummaryDetails,
@@ -53,7 +54,10 @@ export async function generateBranchSummary(
   entries: SessionEntry[],
   options: GenerateBranchSummaryOptions,
 ): Promise<BranchSummaryResult> {
-  const result = await generateBranchSummaryCore(entries, options);
+  const result = await generateBranchSummaryCore(entries, {
+    runtime: openClawAgentCoreRuntime,
+    ...options,
+  });
   if (result.ok) {
     return result.value;
   }

@@ -4,7 +4,7 @@
  */
 
 import { type AssistantMessage, type Context, EventStream, type ToolResultMessage } from "./llm.js";
-import { resolveAgentCoreStreamFn, validateAgentCoreToolArguments } from "./runtime-deps.js";
+import { type AgentCoreRuntimeDeps, resolveAgentCoreStreamFn } from "./runtime-deps.js";
 import type {
   AgentContext,
   AgentEvent,
@@ -15,6 +15,7 @@ import type {
   AgentToolResult,
   StreamFn,
 } from "./types.js";
+import { validateToolArguments } from "./validation.js";
 
 export type AgentEventSink = (event: AgentEvent) => Promise<void> | void;
 
@@ -28,6 +29,7 @@ export function agentLoop(
   config: AgentLoopConfig,
   signal?: AbortSignal,
   streamFn?: StreamFn,
+  runtime?: Partial<AgentCoreRuntimeDeps>,
 ): EventStream<AgentEvent, AgentMessage[]> {
   const stream = createAgentStream();
 
@@ -40,6 +42,7 @@ export function agentLoop(
     },
     signal,
     streamFn,
+    runtime,
   ).then((messages) => {
     stream.end(messages);
   });
@@ -60,6 +63,7 @@ export function agentLoopContinue(
   config: AgentLoopConfig,
   signal?: AbortSignal,
   streamFn?: StreamFn,
+  runtime?: Partial<AgentCoreRuntimeDeps>,
 ): EventStream<AgentEvent, AgentMessage[]> {
   if (context.messages.length === 0) {
     throw new Error("Cannot continue: no messages in context");
@@ -79,6 +83,7 @@ export function agentLoopContinue(
     },
     signal,
     streamFn,
+    runtime,
   ).then((messages) => {
     stream.end(messages);
   });
@@ -93,6 +98,7 @@ export async function runAgentLoop(
   emit: AgentEventSink,
   signal?: AbortSignal,
   streamFn?: StreamFn,
+  runtime?: Partial<AgentCoreRuntimeDeps>,
 ): Promise<AgentMessage[]> {
   const newMessages: AgentMessage[] = [...prompts];
   const currentContext: AgentContext = {
@@ -107,7 +113,7 @@ export async function runAgentLoop(
     await emit({ type: "message_end", message: prompt });
   }
 
-  await runLoop(currentContext, newMessages, config, signal, emit, streamFn);
+  await runLoop(currentContext, newMessages, config, signal, emit, streamFn, runtime);
   return newMessages;
 }
 
@@ -117,6 +123,7 @@ export async function runAgentLoopContinue(
   emit: AgentEventSink,
   signal?: AbortSignal,
   streamFn?: StreamFn,
+  runtime?: Partial<AgentCoreRuntimeDeps>,
 ): Promise<AgentMessage[]> {
   if (context.messages.length === 0) {
     throw new Error("Cannot continue: no messages in context");
@@ -132,7 +139,7 @@ export async function runAgentLoopContinue(
   await emit({ type: "agent_start" });
   await emit({ type: "turn_start" });
 
-  await runLoop(currentContext, newMessages, config, signal, emit, streamFn);
+  await runLoop(currentContext, newMessages, config, signal, emit, streamFn, runtime);
   return newMessages;
 }
 
@@ -153,6 +160,7 @@ async function runLoop(
   signal: AbortSignal | undefined,
   emit: AgentEventSink,
   streamFn?: StreamFn,
+  runtime?: Partial<AgentCoreRuntimeDeps>,
 ): Promise<void> {
   let currentContext = initialContext;
   let config = initialConfig;
@@ -184,7 +192,14 @@ async function runLoop(
       }
 
       // Stream assistant response
-      const message = await streamAssistantResponse(currentContext, config, signal, emit, streamFn);
+      const message = await streamAssistantResponse(
+        currentContext,
+        config,
+        signal,
+        emit,
+        streamFn,
+        runtime,
+      );
       newMessages.push(message);
 
       if (message.stopReason === "error" || message.stopReason === "aborted") {
@@ -277,6 +292,7 @@ async function streamAssistantResponse(
   signal: AbortSignal | undefined,
   emit: AgentEventSink,
   streamFn?: StreamFn,
+  runtime?: Partial<AgentCoreRuntimeDeps>,
 ): Promise<AssistantMessage> {
   // Apply context transform if configured (AgentMessage[] → AgentMessage[])
   let messages = context.messages;
@@ -294,7 +310,7 @@ async function streamAssistantResponse(
     tools: context.tools,
   };
 
-  const streamFunction = resolveAgentCoreStreamFn(streamFn);
+  const streamFunction = resolveAgentCoreStreamFn(runtime, streamFn);
 
   // Resolve API key (important for expiring tokens)
   const resolvedApiKey =
@@ -608,7 +624,7 @@ async function prepareToolCall(
 
   try {
     const preparedToolCall = prepareToolCallArguments(tool, toolCall);
-    const validatedArgs = validateAgentCoreToolArguments(tool, preparedToolCall);
+    const validatedArgs = validateToolArguments(tool, preparedToolCall);
     if (config.beforeToolCall) {
       const beforeResult = await config.beforeToolCall(
         {

@@ -1,6 +1,6 @@
 import { runAgentLoop } from "../agent-loop.js";
 import { type AssistantMessage, type ImageContent, type Model, type UserMessage } from "../llm.js";
-import { resolveAgentCoreStreamFn } from "../runtime-deps.js";
+import { type AgentCoreRuntimeDeps, resolveAgentCoreStreamFn } from "../runtime-deps.js";
 import type {
   AgentContext,
   AgentEvent,
@@ -220,6 +220,7 @@ export class AgentHarness<
   private systemPrompt: AgentHarnessOptions<TSkill, TPromptTemplate, TTool>["systemPrompt"];
   private streamOptions: AgentHarnessStreamOptions;
   private getApiKeyAndHeaders?: AgentHarnessOptions["getApiKeyAndHeaders"];
+  private runtime?: Partial<AgentCoreRuntimeDeps>;
   private resources: AgentHarnessResources<TSkill, TPromptTemplate>;
   private tools = new Map<string, TTool>();
   private activeToolNames: string[];
@@ -237,6 +238,7 @@ export class AgentHarness<
     this.streamOptions = cloneStreamOptions(options.streamOptions);
     this.systemPrompt = options.systemPrompt;
     this.getApiKeyAndHeaders = options.getApiKeyAndHeaders;
+    this.runtime = options.runtime;
     for (const tool of options.tools ?? []) {
       this.tools.set(tool.name, tool);
     }
@@ -430,7 +432,7 @@ export class AgentHarness<
         turnState.sessionId,
         snapshotOptions,
       );
-      return resolveAgentCoreStreamFn()(model, context, {
+      return resolveAgentCoreStreamFn(this.runtime)(model, context, {
         cacheRetention: requestOptions.cacheRetention,
         headers: requestOptions.headers,
         maxRetries: requestOptions.maxRetries,
@@ -841,6 +843,8 @@ export class AgentHarness<
             customInstructions,
             undefined,
             this.thinkingLevel,
+            undefined,
+            this.runtime,
           );
       if (!compactResult.ok) {
         throw compactResult.error;
@@ -928,6 +932,7 @@ export class AgentHarness<
           apiKey: auth.apiKey,
           headers: auth.headers,
           signal: new AbortController().signal,
+          runtime: this.runtime,
           customInstructions: hookResult?.customInstructions ?? options?.customInstructions,
           replaceInstructions: hookResult?.replaceInstructions ?? options?.replaceInstructions,
         });

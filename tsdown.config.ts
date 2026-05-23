@@ -306,6 +306,7 @@ function buildAgentCoreDistEntries(): Record<string, string> {
     node: "packages/agent-core/src/node.ts",
     "runtime-deps": "packages/agent-core/src/runtime-deps.ts",
     types: "packages/agent-core/src/types.ts",
+    validation: "packages/agent-core/src/validation.ts",
     "harness/agent-harness": "packages/agent-core/src/harness/agent-harness.ts",
     "harness/types": "packages/agent-core/src/harness/types.ts",
     "harness/messages": "packages/agent-core/src/harness/messages.ts",

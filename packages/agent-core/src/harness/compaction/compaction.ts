@@ -6,7 +6,7 @@ import type {
   StreamFn,
   Usage,
 } from "../../llm.js";
-import { resolveAgentCoreCompleteFn } from "../../runtime-deps.js";
+import { type AgentCoreRuntimeDeps, resolveAgentCoreCompleteFn } from "../../runtime-deps.js";
 import type { AgentMessage, ThinkingLevel } from "../../types.js";
 import {
   convertToLlm,
@@ -516,11 +516,12 @@ async function completeSummarization(
   context: Context,
   options: SimpleStreamOptions,
   streamFn?: StreamFn,
+  runtime?: Partial<AgentCoreRuntimeDeps>,
 ): Promise<AssistantMessage> {
   if (streamFn) {
     return (await streamFn(model, context, options)).result();
   }
-  return await resolveAgentCoreCompleteFn()(model, context, options);
+  return await resolveAgentCoreCompleteFn(runtime)(model, context, options);
 }
 
 /** Generate or update a conversation summary for compaction. */
@@ -535,6 +536,7 @@ export async function generateSummary(
   previousSummary?: string,
   thinkingLevel?: ThinkingLevel,
   streamFn?: StreamFn,
+  runtime?: Partial<AgentCoreRuntimeDeps>,
 ): Promise<Result<string, CompactionError>> {
   const maxTokens = Math.min(
     Math.floor(0.8 * reserveTokens),
@@ -565,6 +567,7 @@ export async function generateSummary(
     { systemPrompt: SUMMARIZATION_SYSTEM_PROMPT, messages: summarizationMessages },
     createSummarizationOptions(model, maxTokens, apiKey, headers, signal, thinkingLevel),
     streamFn,
+    runtime,
   );
   if (response.stopReason === "aborted") {
     return err(new CompactionError("aborted", response.errorMessage || "Summarization aborted"));
@@ -712,6 +715,7 @@ export async function compact(
   signal?: AbortSignal,
   thinkingLevel?: ThinkingLevel,
   streamFn?: StreamFn,
+  runtime?: Partial<AgentCoreRuntimeDeps>,
 ): Promise<Result<CompactionResult, CompactionError>> {
   const {
     firstKeptEntryId,
@@ -749,6 +753,7 @@ export async function compact(
             previousSummary,
             thinkingLevel,
             streamFn,
+            runtime,
           )
         : Promise.resolve(ok<string, CompactionError>("No prior history.")),
       generateTurnPrefixSummary(
@@ -760,6 +765,7 @@ export async function compact(
         signal,
         thinkingLevel,
         streamFn,
+        runtime,
       ),
     ]);
     if (!historyResult.ok) {
@@ -781,6 +787,7 @@ export async function compact(
       previousSummary,
       thinkingLevel,
       streamFn,
+      runtime,
     );
     if (!summaryResult.ok) {
       return err(summaryResult.error);
@@ -807,6 +814,7 @@ async function generateTurnPrefixSummary(
   signal?: AbortSignal,
   thinkingLevel?: ThinkingLevel,
   streamFn?: StreamFn,
+  runtime?: Partial<AgentCoreRuntimeDeps>,
 ): Promise<Result<string, CompactionError>> {
   const maxTokens = Math.min(
     Math.floor(0.5 * reserveTokens),
@@ -828,6 +836,7 @@ async function generateTurnPrefixSummary(
     { systemPrompt: SUMMARIZATION_SYSTEM_PROMPT, messages: summarizationMessages },
     createSummarizationOptions(model, maxTokens, apiKey, headers, signal, thinkingLevel),
     streamFn,
+    runtime,
   );
   if (response.stopReason === "aborted") {
     return err(

@@ -1,5 +1,5 @@
-import type { Model } from "../../llm.js";
-import { resolveAgentCoreCompleteFn } from "../../runtime-deps.js";
+import type { Model, StreamFn } from "../../llm.js";
+import { type AgentCoreRuntimeDeps, resolveAgentCoreCompleteFn } from "../../runtime-deps.js";
 import type { AgentMessage } from "../../types.js";
 import {
   convertToLlm,
@@ -69,6 +69,10 @@ export interface GenerateBranchSummaryOptions {
   headers?: Record<string, string>;
   /** Abort signal for the summarization request. */
   signal: AbortSignal;
+  /** Runtime used to complete the summarization request. */
+  runtime?: Partial<AgentCoreRuntimeDeps>;
+  /** Optional stream implementation used instead of the runtime complete function. */
+  streamFn?: StreamFn;
   /** Optional instructions appended to or replacing the default prompt. */
   customInstructions?: string;
   /** Replace the default prompt with custom instructions instead of appending them. */
@@ -268,11 +272,11 @@ export async function generateBranchSummary(
       timestamp: Date.now(),
     },
   ];
-  const response = await resolveAgentCoreCompleteFn()(
-    model,
-    { systemPrompt: SUMMARIZATION_SYSTEM_PROMPT, messages: summarizationMessages },
-    { apiKey, headers, signal, maxTokens: 2048 },
-  );
+  const context = { systemPrompt: SUMMARIZATION_SYSTEM_PROMPT, messages: summarizationMessages };
+  const streamOptions = { apiKey, headers, signal, maxTokens: 2048 };
+  const response = options.streamFn
+    ? await (await options.streamFn(model, context, streamOptions)).result()
+    : await resolveAgentCoreCompleteFn(options.runtime)(model, context, streamOptions);
   if (response.stopReason === "aborted") {
     return err(
       new BranchSummaryError("aborted", response.errorMessage || "Branch summary aborted"),

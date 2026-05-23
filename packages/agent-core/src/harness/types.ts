@@ -1,5 +1,13 @@
 import type { AgentEvent, AgentMessage, AgentTool, QueueMode, ThinkingLevel } from "../index.js";
-import type { ImageContent, Model, SimpleStreamOptions, TextContent, Transport } from "../llm.js";
+import type {
+  ImageContent,
+  Model,
+  SimpleStreamOptions,
+  StreamFn,
+  TextContent,
+  Transport,
+} from "../llm.js";
+import type { AgentCoreRuntimeDeps } from "../runtime-deps.js";
 import type { Session } from "./session/session.js";
 
 /** Result of a fallible operation. Expected failures are returned as `ok: false` instead of thrown. */
@@ -795,6 +803,8 @@ export interface GenerateBranchSummaryOptions {
   apiKey: string;
   headers?: Record<string, string>;
   signal: AbortSignal;
+  runtime?: Partial<AgentCoreRuntimeDeps>;
+  streamFn?: StreamFn;
   customInstructions?: string;
   replaceInstructions?: boolean;
   reserveTokens?: number;
@@ -832,6 +842,7 @@ export interface AgentHarnessOptions<
   getApiKeyAndHeaders?: (
     model: Model,
   ) => Promise<{ apiKey: string; headers?: Record<string, string> } | undefined>;
+  runtime?: Partial<AgentCoreRuntimeDeps>;
   /** Curated stream/provider request options. Snapshotted at turn start. */
   streamOptions?: AgentHarnessStreamOptions;
   model: Model;

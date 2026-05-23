@@ -37,22 +37,23 @@ import type {
   AgentMessage,
   AgentState,
   AgentTool,
+  BranchSummaryResult as CoreBranchSummaryResult,
+  CompactionResult,
   ThinkingLevel,
 } from "../runtime/index.js";
-import { stripFrontmatter } from "../utils/frontmatter.js";
-import { sleep } from "../utils/sleep.js";
-import { formatNoApiKeyFoundMessage, formatNoModelSelectedMessage } from "./auth-guidance.js";
-import { type BashResult, executeBashWithOperations } from "./bash-executor.js";
 import {
-  type CompactionResult,
   calculateContextTokens,
-  collectEntriesForBranchSummary,
+  collectEntriesForBranchSummaryFromBranches,
   compact,
   estimateContextTokens,
   generateBranchSummary,
   prepareCompaction,
   shouldCompact,
-} from "./compaction/index.js";
+} from "../runtime/index.js";
+import { stripFrontmatter } from "../utils/frontmatter.js";
+import { sleep } from "../utils/sleep.js";
+import { formatNoApiKeyFoundMessage, formatNoModelSelectedMessage } from "./auth-guidance.js";
+import { type BashResult, executeBashWithOperations } from "./bash-executor.js";
 import { DEFAULT_THINKING_LEVEL } from "./defaults.js";
 import {
   type ContextUsage,
@@ -95,6 +96,33 @@ import { type BuildSystemPromptOptions, buildSystemPrompt } from "./system-promp
 import { type BashOperations, createLocalBashOperations } from "./tools/bash.js";
 import { createAllToolDefinitions } from "./tools/index.js";
 import { createToolDefinitionFromAgentTool } from "./tools/tool-definition-wrapper.js";
+
+function unwrapCoreResult<T>(result: { ok: true; value: T } | { ok: false; error: Error }): T {
+  if (result.ok) {
+    return result.value;
+  }
+  throw result.error;
+}
+
+function normalizeBranchSummaryResult(
+  result:
+    | { ok: true; value: CoreBranchSummaryResult }
+    | { ok: false; error: { code: string; message: string } },
+): {
+  summary?: string;
+  readFiles?: string[];
+  modifiedFiles?: string[];
+  aborted?: boolean;
+  error?: string;
+} {
+  if (result.ok) {
+    return result.value;
+  }
+  if (result.error.code === "aborted") {
+    return { aborted: true, error: result.error.message };
+  }
+  return { error: result.error.message };
+}
 
 // ============================================================================
 // Skill Block Parsing
@@ -1685,7 +1713,7 @@ export class AgentSession {
       const pathEntries = this.sessionManager.getBranch();
       const settings = this.settingsManager.getCompactionSettings();
 
-      const preparation = prepareCompaction(pathEntries, settings);
+      const preparation = unwrapCoreResult(prepareCompaction(pathEntries, settings));
       if (!preparation) {
         // Check why we can't compact
         const lastEntry = pathEntries[pathEntries.length - 1];
@@ -1730,15 +1758,17 @@ export class AgentSession {
         details = extensionCompaction.details;
       } else {
         // Generate compaction result
-        const result = await compact(
-          preparation,
-          this.model,
-          apiKey,
-          headers,
-          customInstructions,
-          this.compactionAbortController.signal,
-          this.thinkingLevel,
-          this.agent.streamFn,
+        const result = unwrapCoreResult(
+          await compact(
+            preparation,
+            this.model,
+            apiKey,
+            headers,
+            customInstructions,
+            this.compactionAbortController.signal,
+            this.thinkingLevel,
+            this.agent.streamFn,
+          ),
         );
         summary = result.summary;
         firstKeptEntryId = result.firstKeptEntryId;
@@ -1972,7 +2002,7 @@ export class AgentSession {
 
       const pathEntries = this.sessionManager.getBranch();
 
-      const preparation = prepareCompaction(pathEntries, settings);
+      const preparation = unwrapCoreResult(prepareCompaction(pathEntries, settings));
       if (!preparation) {
         this.emit({
           type: "compaction_end",
@@ -2026,15 +2056,17 @@ export class AgentSession {
         details = extensionCompaction.details;
       } else {
         // Generate compaction result
-        const compactResult = await compact(
-          preparation,
-          this.model,
-          apiKey,
-          headers,
-          undefined,
-          this.autoCompactionAbortController.signal,
-          this.thinkingLevel,
-          this.agent.streamFn,
+        const compactResult = unwrapCoreResult(
+          await compact(
+            preparation,
+            this.model,
+            apiKey,
+            headers,
+            undefined,
+            this.autoCompactionAbortController.signal,
+            this.thinkingLevel,
+            this.agent.streamFn,
+          ),
         );
         summary = compactResult.summary;
         firstKeptEntryId = compactResult.firstKeptEntryId;
@@ -2805,11 +2837,12 @@ export class AgentSession {
     }
 
     // Collect entries to summarize (from old leaf to common ancestor)
-    const { entries: entriesToSummarize, commonAncestorId } = collectEntriesForBranchSummary(
-      this.sessionManager,
-      oldLeafId,
-      targetId,
-    );
+    const { entries: entriesToSummarize, commonAncestorId } = oldLeafId
+      ? collectEntriesForBranchSummaryFromBranches(
+          this.sessionManager.getBranch(oldLeafId),
+          this.sessionManager.getBranch(targetId),
+        )
+      : { entries: [], commonAncestorId: null };
 
     // Prepare event data - mutable so extensions can override
     let customInstructions = options.customInstructions;
@@ -2870,15 +2903,18 @@ export class AgentSession {
         const model = this.model!;
         const { apiKey, headers } = await this.getRequiredRequestAuth(model);
         const branchSummarySettings = this.settingsManager.getBranchSummarySettings();
-        const result = await generateBranchSummary(entriesToSummarize, {
-          model,
-          apiKey,
-          headers,
-          signal: this.branchSummaryAbortController.signal,
-          customInstructions,
-          replaceInstructions,
-          reserveTokens: branchSummarySettings.reserveTokens,
-        });
+        const result = normalizeBranchSummaryResult(
+          await generateBranchSummary(entriesToSummarize, {
+            model,
+            apiKey,
+            headers,
+            signal: this.branchSummaryAbortController.signal,
+            customInstructions,
+            replaceInstructions,
+            reserveTokens: branchSummarySettings.reserveTokens,
+            streamFn: this.agent.streamFn,
+          }),
+        );
         if (result.aborted) {
           return { cancelled: true, aborted: true };
         }
