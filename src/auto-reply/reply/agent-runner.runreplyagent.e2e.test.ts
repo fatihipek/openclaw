@@ -1022,7 +1022,7 @@ describe("runReplyAgent typing (heartbeat)", () => {
     const storePath = join(storeRoot, "sessions.json");
     await writeFile(storePath, JSON.stringify(sessionStore), "utf-8");
     try {
-      state.runEmbeddedPiAgentMock.mockResolvedValueOnce({
+      state.runEmbeddedAgentMock.mockResolvedValueOnce({
         payloads: [{ text: "subagent timed out" }],
         meta: {
           agentMeta: {
@@ -1105,7 +1105,7 @@ describe("runReplyAgent typing (heartbeat)", () => {
       model: "gpt-5.5",
     };
     const sessionStore = { main: sessionEntry };
-    state.runEmbeddedPiAgentMock.mockResolvedValueOnce({
+    state.runEmbeddedAgentMock.mockResolvedValueOnce({
       payloads: [],
       meta: {},
     });

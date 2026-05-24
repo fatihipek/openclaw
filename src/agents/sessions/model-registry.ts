@@ -666,7 +666,8 @@ export class ModelRegistry {
    * Register a provider dynamically (from extensions).
    *
    * If provider has models: replaces all existing models for this provider.
-   * If provider has only baseUrl/headers: updates currently registered provider models.
+   * Provider-level request settings are stored for already-known models but
+   * never create implicit model rows.
    * If provider has oauth: registers OAuth provider for /login support.
    */
   registerProvider(providerName: string, config: ProviderConfigInput): void {
