@@ -6,6 +6,7 @@ export * from "./env-api-keys.js";
 export * from "./image-models.js";
 export * from "./images.js";
 export * from "./images-api-registry.js";
+export * from "./model-utils.js";
 export * from "./models.js";
 export type { BedrockOptions, BedrockThinkingDisplay } from "./providers/bedrock-shared.js";
 export { supportsBedrockPromptCaching } from "./providers/bedrock-shared.js";

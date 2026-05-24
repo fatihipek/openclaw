@@ -15,22 +15,22 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, resolve } from "node:path";
+import {
+  clampThinkingLevel,
+  getSupportedThinkingLevels,
+  modelsAreEqual,
+} from "../../llm/model-utils.js";
+import { resetApiProviders } from "../../llm/providers/register-builtins.js";
+import { cleanupSessionResources } from "../../llm/session-resources.js";
+import { streamSimple } from "../../llm/stream.js";
 import type {
   AssistantMessage,
   ImageContent,
   Message,
   Model,
   TextContent,
-} from "openclaw/plugin-sdk/llm";
-import {
-  clampThinkingLevel,
-  cleanupSessionResources,
-  getSupportedThinkingLevels,
-  isContextOverflow,
-  modelsAreEqual,
-  resetApiProviders,
-  streamSimple,
-} from "openclaw/plugin-sdk/llm";
+} from "../../llm/types.js";
+import { isContextOverflow } from "../../llm/utils/overflow.js";
 import type {
   Agent,
   AgentEvent,
