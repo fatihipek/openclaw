@@ -1,5 +1,8 @@
 import type { Model, StreamFn } from "../../llm.js";
-import { type AgentCoreRuntimeDeps, resolveAgentCoreCompleteFn } from "../../runtime-deps.js";
+import {
+  type AgentCoreCompletionRuntimeDeps,
+  resolveAgentCoreCompleteFn,
+} from "../../runtime-deps.js";
 import type { AgentMessage } from "../../types.js";
 import {
   convertToLlm,
@@ -70,7 +73,7 @@ export interface GenerateBranchSummaryOptions {
   /** Abort signal for the summarization request. */
   signal: AbortSignal;
   /** Runtime used to complete the summarization request. */
-  runtime?: Partial<AgentCoreRuntimeDeps>;
+  runtime?: AgentCoreCompletionRuntimeDeps;
   /** Optional stream implementation used instead of the runtime complete function. */
   streamFn?: StreamFn;
   /** Optional instructions appended to or replacing the default prompt. */

@@ -4,7 +4,7 @@
  */
 
 import { type AssistantMessage, type Context, EventStream, type ToolResultMessage } from "./llm.js";
-import { type AgentCoreRuntimeDeps, resolveAgentCoreStreamFn } from "./runtime-deps.js";
+import { type AgentCoreStreamRuntimeDeps, resolveAgentCoreStreamFn } from "./runtime-deps.js";
 import type {
   AgentContext,
   AgentEvent,
@@ -29,7 +29,7 @@ export function agentLoop(
   config: AgentLoopConfig,
   signal?: AbortSignal,
   streamFn?: StreamFn,
-  runtime?: Partial<AgentCoreRuntimeDeps>,
+  runtime?: AgentCoreStreamRuntimeDeps,
 ): EventStream<AgentEvent, AgentMessage[]> {
   const stream = createAgentStream();
 
@@ -63,7 +63,7 @@ export function agentLoopContinue(
   config: AgentLoopConfig,
   signal?: AbortSignal,
   streamFn?: StreamFn,
-  runtime?: Partial<AgentCoreRuntimeDeps>,
+  runtime?: AgentCoreStreamRuntimeDeps,
 ): EventStream<AgentEvent, AgentMessage[]> {
   if (context.messages.length === 0) {
     throw new Error("Cannot continue: no messages in context");
@@ -98,7 +98,7 @@ export async function runAgentLoop(
   emit: AgentEventSink,
   signal?: AbortSignal,
   streamFn?: StreamFn,
-  runtime?: Partial<AgentCoreRuntimeDeps>,
+  runtime?: AgentCoreStreamRuntimeDeps,
 ): Promise<AgentMessage[]> {
   const newMessages: AgentMessage[] = [...prompts];
   const currentContext: AgentContext = {
@@ -123,7 +123,7 @@ export async function runAgentLoopContinue(
   emit: AgentEventSink,
   signal?: AbortSignal,
   streamFn?: StreamFn,
-  runtime?: Partial<AgentCoreRuntimeDeps>,
+  runtime?: AgentCoreStreamRuntimeDeps,
 ): Promise<AgentMessage[]> {
   if (context.messages.length === 0) {
     throw new Error("Cannot continue: no messages in context");
@@ -160,7 +160,7 @@ async function runLoop(
   signal: AbortSignal | undefined,
   emit: AgentEventSink,
   streamFn?: StreamFn,
-  runtime?: Partial<AgentCoreRuntimeDeps>,
+  runtime?: AgentCoreStreamRuntimeDeps,
 ): Promise<void> {
   let currentContext = initialContext;
   let config = initialConfig;
@@ -292,7 +292,7 @@ async function streamAssistantResponse(
   signal: AbortSignal | undefined,
   emit: AgentEventSink,
   streamFn?: StreamFn,
-  runtime?: Partial<AgentCoreRuntimeDeps>,
+  runtime?: AgentCoreStreamRuntimeDeps,
 ): Promise<AssistantMessage> {
   // Apply context transform if configured (AgentMessage[] → AgentMessage[])
   let messages = context.messages;

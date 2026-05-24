@@ -8,7 +8,7 @@ import {
   type ThinkingBudgets,
   type Transport,
 } from "./llm.js";
-import { type AgentCoreRuntimeDeps, resolveAgentCoreStreamFn } from "./runtime-deps.js";
+import { type AgentCoreStreamRuntimeDeps, resolveAgentCoreStreamFn } from "./runtime-deps.js";
 import type {
   AfterToolCallContext,
   AfterToolCallResult,
@@ -105,7 +105,7 @@ export interface AgentOptions {
   >;
   convertToLlm?: (messages: AgentMessage[]) => Message[] | Promise<Message[]>;
   transformContext?: (messages: AgentMessage[], signal?: AbortSignal) => Promise<AgentMessage[]>;
-  runtime?: Partial<AgentCoreRuntimeDeps>;
+  runtime?: AgentCoreStreamRuntimeDeps;
   streamFn?: StreamFn;
   getApiKey?: (provider: string) => Promise<string | undefined> | string | undefined;
   onPayload?: SimpleStreamOptions["onPayload"];
@@ -191,7 +191,7 @@ export class Agent {
     messages: AgentMessage[],
     signal?: AbortSignal,
   ) => Promise<AgentMessage[]>;
-  public runtime?: Partial<AgentCoreRuntimeDeps>;
+  public runtime?: AgentCoreStreamRuntimeDeps;
   public streamFn: StreamFn;
   public getApiKey?: (provider: string) => Promise<string | undefined> | string | undefined;
   public onPayload?: SimpleStreamOptions["onPayload"];

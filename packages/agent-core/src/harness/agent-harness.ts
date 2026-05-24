@@ -220,7 +220,7 @@ export class AgentHarness<
   private systemPrompt: AgentHarnessOptions<TSkill, TPromptTemplate, TTool>["systemPrompt"];
   private streamOptions: AgentHarnessStreamOptions;
   private getApiKeyAndHeaders?: AgentHarnessOptions["getApiKeyAndHeaders"];
-  private runtime?: Partial<AgentCoreRuntimeDeps>;
+  private runtime?: AgentCoreRuntimeDeps;
   private resources: AgentHarnessResources<TSkill, TPromptTemplate>;
   private tools = new Map<string, TTool>();
   private activeToolNames: string[];

@@ -280,6 +280,13 @@ interface ToolDefinitionEntry {
   sourceInfo: SourceInfo;
 }
 
+type CompactionReason = "manual" | "threshold" | "overflow";
+
+type CompactionWorkOutcome =
+  | { status: "compacted"; result: CompactionResult }
+  | { status: "aborted" }
+  | { status: "skipped" };
+
 // ============================================================================
 // Constants
 // ============================================================================
@@ -1704,120 +1711,25 @@ export class AgentSession {
     this.emit({ type: "compaction_start", reason: "manual" });
 
     try {
-      if (!this.model) {
-        throw new Error(formatNoModelSelectedMessage());
-      }
-
-      const { apiKey, headers } = await this.getCompactionRequestAuth(this.model);
-
-      const pathEntries = this.sessionManager.getBranch();
       const settings = this.settingsManager.getCompactionSettings();
-
-      const preparation = unwrapCoreResult(prepareCompaction(pathEntries, settings));
-      if (!preparation) {
-        // Check why we can't compact
-        const lastEntry = pathEntries[pathEntries.length - 1];
-        if (lastEntry?.type === "compaction") {
-          throw new Error("Already compacted");
-        }
-        throw new Error("Nothing to compact (session too small)");
-      }
-
-      let extensionCompaction: CompactionResult | undefined;
-      let fromExtension = false;
-
-      if (this.currentExtensionRunner.hasHandlers("session_before_compact")) {
-        const result = await this.currentExtensionRunner.emit({
-          type: "session_before_compact",
-          preparation,
-          branchEntries: pathEntries,
-          customInstructions,
-          signal: this.compactionAbortController.signal,
-        });
-
-        if (result?.cancel) {
-          throw new Error("Compaction cancelled");
-        }
-
-        if (result?.compaction) {
-          extensionCompaction = result.compaction;
-          fromExtension = true;
-        }
-      }
-
-      let summary: string;
-      let firstKeptEntryId: string;
-      let tokensBefore: number;
-      let details: unknown;
-
-      if (extensionCompaction) {
-        // Extension provided compaction content
-        summary = extensionCompaction.summary;
-        firstKeptEntryId = extensionCompaction.firstKeptEntryId;
-        tokensBefore = extensionCompaction.tokensBefore;
-        details = extensionCompaction.details;
-      } else {
-        // Generate compaction result
-        const result = unwrapCoreResult(
-          await compact(
-            preparation,
-            this.model,
-            apiKey,
-            headers,
-            customInstructions,
-            this.compactionAbortController.signal,
-            this.thinkingLevel,
-            this.agent.streamFn,
-          ),
-        );
-        summary = result.summary;
-        firstKeptEntryId = result.firstKeptEntryId;
-        tokensBefore = result.tokensBefore;
-        details = result.details;
-      }
-
-      if (this.compactionAbortController.signal.aborted) {
+      const outcome = await this.runCompactionWork({
+        customInstructions,
+        mode: "manual",
+        settings,
+        signal: this.compactionAbortController.signal,
+      });
+      if (outcome.status !== "compacted") {
         throw new Error("Compaction cancelled");
       }
 
-      this.sessionManager.appendCompaction(
-        summary,
-        firstKeptEntryId,
-        tokensBefore,
-        details,
-        fromExtension,
-      );
-      const newEntries = this.sessionManager.getEntries();
-      const sessionContext = this.sessionManager.buildSessionContext();
-      this.agent.state.messages = sessionContext.messages;
-
-      // Get the saved compaction entry for the extension event
-      const savedCompactionEntry = newEntries.find(
-        (e) => e.type === "compaction" && e.summary === summary,
-      ) as CompactionEntry | undefined;
-
-      if (this.currentExtensionRunner && savedCompactionEntry) {
-        await this.currentExtensionRunner.emit({
-          type: "session_compact",
-          compactionEntry: savedCompactionEntry,
-          fromExtension,
-        });
-      }
-
-      const compactionResult = {
-        summary,
-        firstKeptEntryId,
-        tokensBefore,
-        details,
-      };
       this.emit({
         type: "compaction_end",
         reason: "manual",
-        result: compactionResult,
+        result: outcome.result,
         aborted: false,
         willRetry: false,
       });
-      return compactionResult;
+      return outcome.result;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const aborted =
@@ -1851,6 +1763,123 @@ export class AgentSession {
    */
   abortBranchSummary(): void {
     this.branchSummaryAbortController?.abort();
+  }
+
+  private async getAutoCompactionRequestAuth(model: Model): Promise<
+    | {
+        apiKey?: string;
+        headers?: Record<string, string>;
+      }
+    | undefined
+  > {
+    if (this.agent.streamFn !== streamSimple) {
+      return this.getCompactionRequestAuth(model);
+    }
+
+    const authResult = await this.sessionModelRegistry.getApiKeyAndHeaders(model);
+    if (!authResult.ok || !authResult.apiKey) {
+      return undefined;
+    }
+    return { apiKey: authResult.apiKey, headers: authResult.headers };
+  }
+
+  private async runCompactionWork(options: {
+    settings: ReturnType<SettingsManager["getCompactionSettings"]>;
+    signal: AbortSignal;
+    customInstructions?: string;
+    mode: "manual" | "auto";
+  }): Promise<CompactionWorkOutcome> {
+    const isManual = options.mode === "manual";
+    if (!this.model) {
+      if (isManual) {
+        throw new Error(formatNoModelSelectedMessage());
+      }
+      return { status: "skipped" };
+    }
+
+    const auth = isManual
+      ? await this.getCompactionRequestAuth(this.model)
+      : await this.getAutoCompactionRequestAuth(this.model);
+    if (!auth) {
+      return { status: "skipped" };
+    }
+
+    const pathEntries = this.sessionManager.getBranch();
+    const preparation = unwrapCoreResult(prepareCompaction(pathEntries, options.settings));
+    if (!preparation) {
+      if (isManual) {
+        const lastEntry = pathEntries[pathEntries.length - 1];
+        throw new Error(
+          lastEntry?.type === "compaction"
+            ? "Already compacted"
+            : "Nothing to compact (session too small)",
+        );
+      }
+      return { status: "skipped" };
+    }
+
+    let compactionResult: CompactionResult | undefined;
+    let fromExtension = false;
+    if (this.currentExtensionRunner.hasHandlers("session_before_compact")) {
+      const extensionResult = await this.currentExtensionRunner.emit({
+        type: "session_before_compact",
+        preparation,
+        branchEntries: pathEntries,
+        customInstructions: options.customInstructions,
+        signal: options.signal,
+      });
+
+      if (extensionResult?.cancel) {
+        return { status: "aborted" };
+      }
+
+      if (extensionResult?.compaction) {
+        compactionResult = extensionResult.compaction;
+        fromExtension = true;
+      }
+    }
+
+    compactionResult ??= unwrapCoreResult(
+      await compact(
+        preparation,
+        this.model,
+        auth.apiKey,
+        auth.headers,
+        options.customInstructions,
+        options.signal,
+        this.thinkingLevel,
+        this.agent.streamFn,
+      ),
+    );
+
+    if (options.signal.aborted) {
+      return { status: "aborted" };
+    }
+
+    this.sessionManager.appendCompaction(
+      compactionResult.summary,
+      compactionResult.firstKeptEntryId,
+      compactionResult.tokensBefore,
+      compactionResult.details,
+      fromExtension,
+    );
+    const newEntries = this.sessionManager.getEntries();
+    const sessionContext = this.sessionManager.buildSessionContext();
+    this.agent.state.messages = sessionContext.messages;
+
+    const savedCompactionEntry = newEntries.find(
+      (e) => e.type === "compaction" && e.summary === compactionResult.summary,
+    ) as CompactionEntry | undefined;
+
+    if (this.currentExtensionRunner && savedCompactionEntry) {
+      await this.currentExtensionRunner.emit({
+        type: "session_compact",
+        compactionEntry: savedCompactionEntry,
+        fromExtension,
+      });
+    }
+
+    return { status: "compacted", result: compactionResult };
   }
 
   /**
@@ -1960,7 +1989,7 @@ export class AgentSession {
    * Internal: Run auto-compaction with events.
    */
   private async runAutoCompaction(
-    reason: "overflow" | "threshold",
+    reason: Exclude<CompactionReason, "manual">,
     willRetry: boolean,
   ): Promise<boolean> {
     const settings = this.settingsManager.getCompactionSettings();
@@ -1969,7 +1998,12 @@ export class AgentSession {
     this.autoCompactionAbortController = new AbortController();
 
     try {
-      if (!this.model) {
+      const outcome = await this.runCompactionWork({
+        mode: "auto",
+        settings,
+        signal: this.autoCompactionAbortController.signal,
+      });
+      if (outcome.status === "skipped") {
         this.emit({
           type: "compaction_end",
           reason,
@@ -1979,102 +2013,7 @@ export class AgentSession {
         });
         return false;
       }
-
-      let apiKey: string | undefined;
-      let headers: Record<string, string> | undefined;
-      if (this.agent.streamFn === streamSimple) {
-        const authResult = await this.sessionModelRegistry.getApiKeyAndHeaders(this.model);
-        if (!authResult.ok || !authResult.apiKey) {
-          this.emit({
-            type: "compaction_end",
-            reason,
-            result: undefined,
-            aborted: false,
-            willRetry: false,
-          });
-          return false;
-        }
-        apiKey = authResult.apiKey;
-        headers = authResult.headers;
-      } else {
-        ({ apiKey, headers } = await this.getCompactionRequestAuth(this.model));
-      }
-
-      const pathEntries = this.sessionManager.getBranch();
-
-      const preparation = unwrapCoreResult(prepareCompaction(pathEntries, settings));
-      if (!preparation) {
-        this.emit({
-          type: "compaction_end",
-          reason,
-          result: undefined,
-          aborted: false,
-          willRetry: false,
-        });
-        return false;
-      }
-
-      let extensionCompaction: CompactionResult | undefined;
-      let fromExtension = false;
-
-      if (this.currentExtensionRunner.hasHandlers("session_before_compact")) {
-        const extensionResult = await this.currentExtensionRunner.emit({
-          type: "session_before_compact",
-          preparation,
-          branchEntries: pathEntries,
-          customInstructions: undefined,
-          signal: this.autoCompactionAbortController.signal,
-        });
-
-        if (extensionResult?.cancel) {
-          this.emit({
-            type: "compaction_end",
-            reason,
-            result: undefined,
-            aborted: true,
-            willRetry: false,
-          });
-          return false;
-        }
-
-        if (extensionResult?.compaction) {
-          extensionCompaction = extensionResult.compaction;
-          fromExtension = true;
-        }
-      }
-
-      let summary: string;
-      let firstKeptEntryId: string;
-      let tokensBefore: number;
-      let details: unknown;
-
-      if (extensionCompaction) {
-        // Extension provided compaction content
-        summary = extensionCompaction.summary;
-        firstKeptEntryId = extensionCompaction.firstKeptEntryId;
-        tokensBefore = extensionCompaction.tokensBefore;
-        details = extensionCompaction.details;
-      } else {
-        // Generate compaction result
-        const compactResult = unwrapCoreResult(
-          await compact(
-            preparation,
-            this.model,
-            apiKey,
-            headers,
-            undefined,
-            this.autoCompactionAbortController.signal,
-            this.thinkingLevel,
-            this.agent.streamFn,
-          ),
-        );
-        summary = compactResult.summary;
-        firstKeptEntryId = compactResult.firstKeptEntryId;
-        tokensBefore = compactResult.tokensBefore;
-        details = compactResult.details;
-      }
-
-      if (this.autoCompactionAbortController.signal.aborted) {
+      if (outcome.status === "aborted") {
         this.emit({
           type: "compaction_end",
           reason,
@@ -2084,38 +2023,13 @@ export class AgentSession {
         });
         return false;
       }
-
-      this.sessionManager.appendCompaction(
-        summary,
-        firstKeptEntryId,
-        tokensBefore,
-        details,
-        fromExtension,
-      );
-      const newEntries = this.sessionManager.getEntries();
-      const sessionContext = this.sessionManager.buildSessionContext();
-      this.agent.state.messages = sessionContext.messages;
-
-      // Get the saved compaction entry for the extension event
-      const savedCompactionEntry = newEntries.find(
-        (e) => e.type === "compaction" && e.summary === summary,
-      ) as CompactionEntry | undefined;
-
-      if (this.currentExtensionRunner && savedCompactionEntry) {
-        await this.currentExtensionRunner.emit({
-          type: "session_compact",
-          compactionEntry: savedCompactionEntry,
-          fromExtension,
-        });
-      }
-
-      const result: CompactionResult = {
-        summary,
-        firstKeptEntryId,
-        tokensBefore,
-        details,
-      };
-      this.emit({ type: "compaction_end", reason, result, aborted: false, willRetry });
+      this.emit({
+        type: "compaction_end",
+        reason,
+        result: outcome.result,
+        aborted: false,
+        willRetry,
+      });
 
       if (willRetry) {
         const messages = this.agent.state.messages;

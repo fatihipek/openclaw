@@ -6,7 +6,10 @@ import type {
   StreamFn,
   Usage,
 } from "../../llm.js";
-import { type AgentCoreRuntimeDeps, resolveAgentCoreCompleteFn } from "../../runtime-deps.js";
+import {
+  type AgentCoreCompletionRuntimeDeps,
+  resolveAgentCoreCompleteFn,
+} from "../../runtime-deps.js";
 import type { AgentMessage, ThinkingLevel } from "../../types.js";
 import {
   convertToLlm,
@@ -516,7 +519,7 @@ async function completeSummarization(
   context: Context,
   options: SimpleStreamOptions,
   streamFn?: StreamFn,
-  runtime?: Partial<AgentCoreRuntimeDeps>,
+  runtime?: AgentCoreCompletionRuntimeDeps,
 ): Promise<AssistantMessage> {
   if (streamFn) {
     return (await streamFn(model, context, options)).result();
@@ -536,7 +539,7 @@ export async function generateSummary(
   previousSummary?: string,
   thinkingLevel?: ThinkingLevel,
   streamFn?: StreamFn,
-  runtime?: Partial<AgentCoreRuntimeDeps>,
+  runtime?: AgentCoreCompletionRuntimeDeps,
 ): Promise<Result<string, CompactionError>> {
   const maxTokens = Math.min(
     Math.floor(0.8 * reserveTokens),
@@ -715,7 +718,7 @@ export async function compact(
   signal?: AbortSignal,
   thinkingLevel?: ThinkingLevel,
   streamFn?: StreamFn,
-  runtime?: Partial<AgentCoreRuntimeDeps>,
+  runtime?: AgentCoreCompletionRuntimeDeps,
 ): Promise<Result<CompactionResult, CompactionError>> {
   const {
     firstKeptEntryId,
@@ -814,7 +817,7 @@ async function generateTurnPrefixSummary(
   signal?: AbortSignal,
   thinkingLevel?: ThinkingLevel,
   streamFn?: StreamFn,
-  runtime?: Partial<AgentCoreRuntimeDeps>,
+  runtime?: AgentCoreCompletionRuntimeDeps,
 ): Promise<Result<string, CompactionError>> {
   const maxTokens = Math.min(
     Math.floor(0.5 * reserveTokens),

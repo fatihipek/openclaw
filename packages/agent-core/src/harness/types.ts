@@ -7,7 +7,7 @@ import type {
   TextContent,
   Transport,
 } from "../llm.js";
-import type { AgentCoreRuntimeDeps } from "../runtime-deps.js";
+import type { AgentCoreCompletionRuntimeDeps, AgentCoreRuntimeDeps } from "../runtime-deps.js";
 import type { Session } from "./session/session.js";
 
 /** Result of a fallible operation. Expected failures are returned as `ok: false` instead of thrown. */
@@ -803,7 +803,7 @@ export interface GenerateBranchSummaryOptions {
   apiKey: string;
   headers?: Record<string, string>;
   signal: AbortSignal;
-  runtime?: Partial<AgentCoreRuntimeDeps>;
+  runtime?: AgentCoreCompletionRuntimeDeps;
   streamFn?: StreamFn;
   customInstructions?: string;
   replaceInstructions?: boolean;
@@ -842,7 +842,7 @@ export interface AgentHarnessOptions<
   getApiKeyAndHeaders?: (
     model: Model,
   ) => Promise<{ apiKey: string; headers?: Record<string, string> } | undefined>;
-  runtime?: Partial<AgentCoreRuntimeDeps>;
+  runtime?: AgentCoreRuntimeDeps;
   /** Curated stream/provider request options. Snapshotted at turn start. */
   streamOptions?: AgentHarnessStreamOptions;
   model: Model;

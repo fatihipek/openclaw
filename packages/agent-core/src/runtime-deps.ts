@@ -5,6 +5,9 @@ export interface AgentCoreRuntimeDeps {
   completeSimple: CompleteSimpleFn;
 }
 
+export type AgentCoreStreamRuntimeDeps = Pick<AgentCoreRuntimeDeps, "streamSimple">;
+export type AgentCoreCompletionRuntimeDeps = Pick<AgentCoreRuntimeDeps, "completeSimple">;
+
 function missingRuntimeDep(name: keyof AgentCoreRuntimeDeps): Error {
   return new Error(
     `@openclaw/agent-core runtime dependency "${name}" is not configured. Pass an AgentCoreRuntimeDeps instance or a streamFn explicitly.`,
@@ -12,7 +15,7 @@ function missingRuntimeDep(name: keyof AgentCoreRuntimeDeps): Error {
 }
 
 export function resolveAgentCoreStreamFn(
-  runtime: Partial<AgentCoreRuntimeDeps> | undefined,
+  runtime: AgentCoreStreamRuntimeDeps | undefined,
   streamFn?: StreamFn,
 ): StreamFn {
   if (streamFn) {
@@ -25,7 +28,7 @@ export function resolveAgentCoreStreamFn(
 }
 
 export function resolveAgentCoreCompleteFn(
-  runtime: Partial<AgentCoreRuntimeDeps> | undefined,
+  runtime: AgentCoreCompletionRuntimeDeps | undefined,
 ): CompleteSimpleFn {
   if (runtime?.completeSimple) {
     return runtime.completeSimple;
