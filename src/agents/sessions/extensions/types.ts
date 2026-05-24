@@ -1315,10 +1315,9 @@ export interface ExtensionAPI {
   // =========================================================================
 
   /**
-   * Register or override a model provider.
+   * Register a model provider.
    *
    * If `models` is provided: replaces all existing models for this provider.
-   * If only `baseUrl` is provided: overrides the URL for existing models.
    * If `oauth` is provided: registers OAuth provider for /login support.
    * If `streamSimple` is provided: registers a custom API stream handler.
    *
@@ -1371,9 +1370,8 @@ export interface ExtensionAPI {
   /**
    * Unregister a previously registered provider.
    *
-   * Removes all models belonging to the named provider and restores unknown
-   * built-in models that were overridden by it. Has no effect if the provider
-   * is not currently registered.
+   * Removes all models belonging to the named provider and reloads the configured
+   * model registry. Has no effect if the provider is not currently registered.
    *
    * Like `registerProvider`, this takes effect immediately when called after
    * the initial load phase.

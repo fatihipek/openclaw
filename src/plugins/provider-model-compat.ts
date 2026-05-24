@@ -1,6 +1,6 @@
-import type { Model } from "openclaw/plugin-sdk/llm";
 import { detectOpenAICompletionsCompat } from "../agents/openai-completions-compat.js";
 import type { ModelCompatConfig } from "../config/types.models.js";
+import type { Model } from "../llm/types.js";
 
 export function extractModelCompat(
   modelOrCompat: { compat?: unknown } | ModelCompatConfig | undefined,

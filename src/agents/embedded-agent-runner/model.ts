@@ -1,5 +1,6 @@
-import type { Api, Model } from "openclaw/plugin-sdk/llm";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
+import type { ModelRegistry as CoreModelRegistry } from "../../llm/model-registry.js";
+import type { Api, Model } from "../../llm/types.js";
 import type { ProviderRuntimeModel } from "../../plugins/provider-runtime-model.types.js";
 import {
   applyProviderResolvedModelCompatWithPlugins,
@@ -735,7 +736,7 @@ function applyConfiguredProviderOverrides(params: {
 function resolveExplicitModelWithRegistry(params: {
   provider: string;
   modelId: string;
-  modelRegistry: ModelRegistry;
+  modelRegistry: CoreModelRegistry;
   cfg?: OpenClawConfig;
   agentDir?: string;
   workspaceDir?: string;
@@ -852,7 +853,7 @@ function resolveExplicitModelWithRegistry(params: {
 function resolvePluginDynamicModelWithRegistry(params: {
   provider: string;
   modelId: string;
-  modelRegistry: ModelRegistry;
+  modelRegistry: CoreModelRegistry;
   cfg?: OpenClawConfig;
   agentDir?: string;
   workspaceDir?: string;
@@ -1042,7 +1043,7 @@ function preferProviderRuntimeResolvedModel(params: {
 export function resolveModelWithRegistry(params: {
   provider: string;
   modelId: string;
-  modelRegistry: ModelRegistry;
+  modelRegistry: CoreModelRegistry;
   cfg?: OpenClawConfig;
   agentDir?: string;
   workspaceDir?: string;

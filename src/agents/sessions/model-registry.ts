@@ -1,5 +1,5 @@
 /**
- * Model registry - manages built-in and custom models, provides API key resolution.
+ * Model registry - manages configured/provider-owned models and API key resolution.
  */
 
 import { existsSync, readFileSync } from "node:fs";
@@ -23,12 +23,6 @@ import { registerOAuthProvider, resetOAuthProviders } from "../../llm/utils/oaut
 import type { OAuthProviderInterface } from "../../llm/utils/oauth/types.js";
 import { getAgentDir } from "../config.js";
 import type { AuthStatus, AuthStorage } from "./auth-storage.js";
-import {
-  getBuiltInProviderModelDefaults,
-  isBuiltInModelProvider,
-  listBuiltInModelProviders,
-  listBuiltInModelsForProvider,
-} from "./built-in-model-catalog.js";
 import { BUILT_IN_PROVIDER_DISPLAY_NAMES } from "./provider-display-names.js";
 import {
   clearConfigValueCache,
@@ -164,28 +158,6 @@ const ModelDefinitionSchema = Type.Object({
   compat: Type.Optional(ProviderCompatSchema),
 });
 
-// Schema for per-model overrides (all fields optional, merged with built-in model)
-const ModelOverrideSchema = Type.Object({
-  name: Type.Optional(Type.String({ minLength: 1 })),
-  reasoning: Type.Optional(Type.Boolean()),
-  thinkingLevelMap: Type.Optional(ThinkingLevelMapSchema),
-  input: Type.Optional(Type.Array(Type.Union([Type.Literal("text"), Type.Literal("image")]))),
-  cost: Type.Optional(
-    Type.Object({
-      input: Type.Optional(Type.Number()),
-      output: Type.Optional(Type.Number()),
-      cacheRead: Type.Optional(Type.Number()),
-      cacheWrite: Type.Optional(Type.Number()),
-    }),
-  ),
-  contextWindow: Type.Optional(Type.Number()),
-  maxTokens: Type.Optional(Type.Number()),
-  headers: Type.Optional(Type.Record(Type.String(), Type.String())),
-  compat: Type.Optional(ProviderCompatSchema),
-});
-
-type ModelOverride = Static<typeof ModelOverrideSchema>;
-
 const ProviderConfigSchema = Type.Object({
   name: Type.Optional(Type.String({ minLength: 1 })),
   baseUrl: Type.Optional(Type.String({ minLength: 1 })),
@@ -195,7 +167,6 @@ const ProviderConfigSchema = Type.Object({
   compat: Type.Optional(ProviderCompatSchema),
   authHeader: Type.Optional(Type.Boolean()),
   models: Type.Optional(Type.Array(ModelDefinitionSchema)),
-  modelOverrides: Type.Optional(Type.Record(Type.String(), ModelOverrideSchema)),
 });
 
 const ModelsConfigSchema = Type.Object({
@@ -227,12 +198,6 @@ function stripJsonComments(input: string): string {
     .replace(/"(?:\\.|[^"\\])*"|,(\s*[}\]])/g, (m, tail) => tail ?? (m[0] === '"' ? m : ""));
 }
 
-/** Provider override config (baseUrl, compat) without request auth/headers */
-interface ProviderOverride {
-  baseUrl?: string;
-  compat?: Model["compat"];
-}
-
 interface ProviderRequestConfig {
   apiKey?: string;
   headers?: Record<string, string>;
@@ -253,20 +218,16 @@ export type ResolvedRequestAuth =
 /** Result of loading custom models from models.json */
 interface CustomModelsResult {
   models: Model[];
-  /** Providers with baseUrl/headers/apiKey overrides for built-in models */
-  overrides: Map<string, ProviderOverride>;
-  /** Per-model overrides: provider -> modelId -> override */
-  modelOverrides: Map<string, Map<string, ModelOverride>>;
   error: string | undefined;
 }
 
 function emptyCustomModelsResult(error?: string): CustomModelsResult {
-  return { models: [], overrides: new Map(), modelOverrides: new Map(), error };
+  return { models: [], error };
 }
 
 function mergeCompat(
   baseCompat: Model["compat"],
-  overrideCompat: ModelOverride["compat"],
+  overrideCompat: Model["compat"],
 ): Model["compat"] | undefined {
   if (!overrideCompat) {
     return baseCompat;
@@ -303,49 +264,6 @@ function mergeCompat(
   return merged as Model["compat"];
 }
 
-/**
- * Deep merge a model override into a model.
- * Handles nested objects (cost, compat) by merging rather than replacing.
- */
-function applyModelOverride(model: Model, override: ModelOverride): Model {
-  const result = { ...model };
-
-  // Simple field overrides
-  if (override.name !== undefined) {
-    result.name = override.name;
-  }
-  if (override.reasoning !== undefined) {
-    result.reasoning = override.reasoning;
-  }
-  if (override.thinkingLevelMap !== undefined) {
-    result.thinkingLevelMap = { ...model.thinkingLevelMap, ...override.thinkingLevelMap };
-  }
-  if (override.input !== undefined) {
-    result.input = override.input;
-  }
-  if (override.contextWindow !== undefined) {
-    result.contextWindow = override.contextWindow;
-  }
-  if (override.maxTokens !== undefined) {
-    result.maxTokens = override.maxTokens;
-  }
-
-  // Merge cost (partial override)
-  if (override.cost) {
-    result.cost = {
-      input: override.cost.input ?? model.cost.input,
-      output: override.cost.output ?? model.cost.output,
-      cacheRead: override.cost.cacheRead ?? model.cost.cacheRead,
-      cacheWrite: override.cost.cacheWrite ?? model.cost.cacheWrite,
-    };
-  }
-
-  // Deep merge compat
-  result.compat = mergeCompat(model.compat, override.compat);
-
-  return result;
-}
-
 /** Clear the config value command cache. Exported for testing. */
 export const clearApiKeyCache = clearConfigValueCache;
 
@@ -379,7 +297,7 @@ export class ModelRegistry {
   }
 
   /**
-   * Reload models from disk (built-in + custom from models.json).
+   * Reload models from disk (models.json).
    */
   refresh(): void {
     this.providerRequestConfigs.clear();
@@ -405,23 +323,17 @@ export class ModelRegistry {
   }
 
   private loadModels(): void {
-    // Load custom models and overrides from models.json
-    const {
-      models: customModels,
-      overrides,
-      modelOverrides,
-      error,
-    } = this.modelsJsonPath
+    // Load configured models and request settings from models.json
+    const { models: customModels, error } = this.modelsJsonPath
       ? this.loadCustomModels(this.modelsJsonPath)
       : emptyCustomModelsResult();
 
     if (error) {
       this.loadError = error;
-      // Keep built-in models even if custom models failed to load
+      // Keep the prior empty/default registry shape when models.json failed to load.
     }
 
-    const builtInModels = this.loadBuiltInModels(overrides, modelOverrides);
-    let combined = this.mergeCustomModels(builtInModels, customModels);
+    let combined = customModels;
 
     // Let OAuth providers modify their models (e.g., update baseUrl)
     for (const oauthProvider of this.authStorage.getOAuthProviders()) {
@@ -432,55 +344,6 @@ export class ModelRegistry {
     }
 
     this.models = combined;
-  }
-
-  /** Load built-in models and apply provider/model overrides */
-  private loadBuiltInModels(
-    overrides: Map<string, ProviderOverride>,
-    modelOverrides: Map<string, Map<string, ModelOverride>>,
-  ): Model[] {
-    return listBuiltInModelProviders().flatMap((provider) => {
-      const models = listBuiltInModelsForProvider(provider);
-      const providerOverride = overrides.get(provider);
-      const perModelOverrides = modelOverrides.get(provider);
-
-      return models.map((m) => {
-        let model = m;
-
-        // Apply provider-level baseUrl/headers/compat override
-        if (providerOverride) {
-          model = {
-            ...model,
-            baseUrl: providerOverride.baseUrl ?? model.baseUrl,
-            compat: mergeCompat(model.compat, providerOverride.compat),
-          };
-        }
-
-        // Apply per-model override
-        const modelOverride = perModelOverrides?.get(m.id);
-        if (modelOverride) {
-          model = applyModelOverride(model, modelOverride);
-        }
-
-        return model;
-      });
-    });
-  }
-
-  /** Merge custom models into built-in list by provider+id (custom wins on conflicts). */
-  private mergeCustomModels(builtInModels: Model[], customModels: Model[]): Model[] {
-    const merged = [...builtInModels];
-    for (const customModel of customModels) {
-      const existingIndex = merged.findIndex(
-        (m) => m.provider === customModel.provider && m.id === customModel.id,
-      );
-      if (existingIndex >= 0) {
-        merged[existingIndex] = customModel;
-      } else {
-        merged.push(customModel);
-      }
-    }
-    return merged;
   }
 
   private loadCustomModels(modelsJsonPath: string): CustomModelsResult {
@@ -508,28 +371,13 @@ export class ModelRegistry {
       // Additional validation
       this.validateConfig(config);
 
-      const overrides = new Map<string, ProviderOverride>();
-      const modelOverrides = new Map<string, Map<string, ModelOverride>>();
-
       for (const [providerName, providerConfig] of Object.entries(config.providers)) {
-        if (providerConfig.baseUrl || providerConfig.compat) {
-          overrides.set(providerName, {
-            baseUrl: providerConfig.baseUrl,
-            compat: providerConfig.compat,
-          });
-        }
-
-        this.storeProviderRequestConfig(providerName, providerConfig);
-
-        if (providerConfig.modelOverrides) {
-          modelOverrides.set(providerName, new Map(Object.entries(providerConfig.modelOverrides)));
-          for (const [modelId, modelOverride] of Object.entries(providerConfig.modelOverrides)) {
-            this.storeModelHeaders(providerName, modelId, modelOverride.headers);
-          }
+        if ((providerConfig.models ?? []).length > 0) {
+          this.storeProviderRequestConfig(providerName, providerConfig);
         }
       }
 
-      return { models: this.parseModels(config), overrides, modelOverrides, error: undefined };
+      return { models: this.parseModels(config), error: undefined };
     } catch (error) {
       if (error instanceof SyntaxError) {
         return emptyCustomModelsResult(
@@ -544,49 +392,33 @@ export class ModelRegistry {
 
   private validateConfig(config: ModelsConfig): void {
     for (const [providerName, providerConfig] of Object.entries(config.providers)) {
-      const isBuiltIn = isBuiltInModelProvider(providerName);
       const hasProviderApi = !!providerConfig.api;
       const models = providerConfig.models ?? [];
-      const hasModelOverrides =
-        providerConfig.modelOverrides && Object.keys(providerConfig.modelOverrides).length > 0;
 
       if (models.length === 0) {
-        // Override-only config: needs baseUrl, headers, compat, modelOverrides, or some combination.
-        if (
-          !providerConfig.baseUrl &&
-          !providerConfig.headers &&
-          !providerConfig.compat &&
-          !hasModelOverrides
-        ) {
-          throw new Error(
-            `Provider ${providerName}: must specify "baseUrl", "headers", "compat", "modelOverrides", or "models".`,
-          );
-        }
-      } else if (!isBuiltIn) {
-        // Non-built-in providers with custom models require endpoint + auth.
-        if (!providerConfig.baseUrl) {
-          throw new Error(
-            `Provider ${providerName}: "baseUrl" is required when defining custom models.`,
-          );
-        }
-        if (!providerConfig.apiKey) {
-          throw new Error(
-            `Provider ${providerName}: "apiKey" is required when defining custom models.`,
-          );
-        }
+        continue;
       }
-      // Built-in providers with custom models: baseUrl/apiKey/api are optional,
-      // inherited from built-in models. Auth comes from env vars / auth storage.
+
+      // Provider-owned/custom catalogs must be self-contained.
+      if (!providerConfig.baseUrl) {
+        throw new Error(
+          `Provider ${providerName}: "baseUrl" is required when defining custom models.`,
+        );
+      }
+      if (!providerConfig.apiKey) {
+        throw new Error(
+          `Provider ${providerName}: "apiKey" is required when defining custom models.`,
+        );
+      }
 
       for (const modelDef of models) {
         const hasModelApi = !!modelDef.api;
 
-        if (!hasProviderApi && !hasModelApi && !isBuiltIn) {
+        if (!hasProviderApi && !hasModelApi) {
           throw new Error(
             `Provider ${providerName}, model ${modelDef.id}: no "api" specified. Set at provider or model level.`,
           );
         }
-        // For built-in providers, api is optional — inherited from built-in models.
 
         if (!modelDef.id) {
           throw new Error(`Provider ${providerName}: model missing "id"`);
@@ -609,17 +441,15 @@ export class ModelRegistry {
       const modelDefs = providerConfig.models ?? [];
       if (modelDefs.length === 0) {
         continue;
-      } // Override-only, no custom models
-
-      const builtInDefaults = getBuiltInProviderModelDefaults(providerName);
+      }
 
       for (const modelDef of modelDefs) {
-        const api = modelDef.api ?? providerConfig.api ?? builtInDefaults?.api;
+        const api = modelDef.api ?? providerConfig.api;
         if (!api) {
           continue;
         }
 
-        const baseUrl = modelDef.baseUrl ?? providerConfig.baseUrl ?? builtInDefaults?.baseUrl;
+        const baseUrl = modelDef.baseUrl ?? providerConfig.baseUrl;
         if (!baseUrl) {
           continue;
         }
@@ -650,8 +480,7 @@ export class ModelRegistry {
   }
 
   /**
-   * Get all models (built-in + custom).
-   * If models.json had errors, returns only built-in models.
+   * Get all configured models.
    */
   getAll(): Model[] {
     return this.models;
@@ -837,7 +666,7 @@ export class ModelRegistry {
    * Register a provider dynamically (from extensions).
    *
    * If provider has models: replaces all existing models for this provider.
-   * If provider has only baseUrl/headers: overrides existing models' URLs.
+   * If provider has only baseUrl/headers: updates currently registered provider models.
    * If provider has oauth: registers OAuth provider for /login support.
    */
   registerProvider(providerName: string, config: ProviderConfigInput): void {
@@ -849,8 +678,7 @@ export class ModelRegistry {
   /**
    * Unregister a previously registered provider.
    *
-   * Removes the provider from the registry and reloads models from disk so that
-   * built-in models overridden by this provider are restored to their original state.
+   * Removes the provider from the registry and reloads models from disk.
    * Also resets dynamic OAuth and API stream registrations before reapplying
    * remaining dynamic providers.
    * Has no effect if the provider was never registered.
@@ -967,17 +795,6 @@ export class ModelRegistry {
           this.models = config.oauth.modifyModels(this.models, cred);
         }
       }
-    } else if (config.baseUrl || config.headers) {
-      // Override-only: update baseUrl for existing models. Request headers are resolved per request.
-      this.models = this.models.map((m) => {
-        if (m.provider !== providerName) {
-          return m;
-        }
-        return {
-          ...m,
-          baseUrl: config.baseUrl ?? m.baseUrl,
-        };
-      });
     }
   }
 }
