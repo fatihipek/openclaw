@@ -1,0 +1,21 @@
+[Unit]
+Description=Atölye Sesli İletişim Sistemi V4 (Atılgan Voice Chat)
+After=network.target sound.target
+
+[Service]
+Type=simple
+User=atilgan
+ExecStart=/usr/bin/python3 -u /home/atilgan/.openclaw/workspace/scripts/voice_chat.py
+WorkingDirectory=/home/atilgan/.openclaw/workspace/scripts
+Restart=always
+RestartSec=10
+Environment="PYTHONPATH=/home/atilgan/.local/lib/python3.10/site-packages"
+Environment="PULSE_SERVER=unix:/run/user/1000/pulse/native"
+Environment="XDG_RUNTIME_DIR=/run/user/1000"
+Environment="HOME=/home/atilgan"
+Environment="DEEPGRAM_API_KEY=193bbf98aa38f3a21d684a4bb3043f095eb5cec0"
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target
