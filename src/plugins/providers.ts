@@ -514,14 +514,10 @@ export function resolveOwningPluginIdsForProvider(params: {
 
   if (params.manifestRegistry) {
     const pluginIds = params.manifestRegistry.plugins
-      .filter(
-        (plugin) =>
-          plugin.providers.some(
-            (providerId) => normalizeProviderId(providerId) === normalizedProvider,
-          ) ||
-          plugin.cliBackends.some(
-            (backendId) => normalizeProviderId(backendId) === normalizedProvider,
-          ),
+      .filter((plugin) =>
+        plugin.providers.some(
+          (providerId) => normalizeProviderId(providerId) === normalizedProvider,
+        ),
       )
       .map((plugin) => plugin.id);
 
@@ -529,26 +525,73 @@ export function resolveOwningPluginIdsForProvider(params: {
   }
 
   const env = params.env ?? process.env;
-  const pluginIds = [
-    ...resolveProviderOwners({
-      config: params.config,
-      workspaceDir: params.workspaceDir,
-      env,
-      providerId: normalizedProvider,
-      includeDisabled: true,
-    }),
-    ...resolvePluginContributionOwners({
-      config: params.config,
-      workspaceDir: params.workspaceDir,
-      env,
-      contribution: "cliBackends",
-      matches: (backendId) => normalizeProviderId(backendId) === normalizedProvider,
-      includeDisabled: true,
-    }),
-  ];
+  const pluginIds = resolveProviderOwners({
+    config: params.config,
+    workspaceDir: params.workspaceDir,
+    env,
+    providerId: normalizedProvider,
+    includeDisabled: true,
+  });
 
   const deduped = dedupeSortedPluginIds(pluginIds);
   return deduped.length > 0 ? deduped : undefined;
+}
+
+function resolveOwningPluginIdsForCliBackend(params: {
+  backend: string;
+  config?: PluginLoadOptions["config"];
+  workspaceDir?: string;
+  env?: PluginLoadOptions["env"];
+  manifestRegistry?: PluginManifestRegistry;
+}): string[] | undefined {
+  const normalizedBackend = normalizeProviderId(params.backend);
+  if (!normalizedBackend) {
+    return undefined;
+  }
+
+  if (params.manifestRegistry) {
+    const pluginIds = params.manifestRegistry.plugins
+      .filter((plugin) =>
+        plugin.cliBackends.some(
+          (backendId) => normalizeProviderId(backendId) === normalizedBackend,
+        ),
+      )
+      .map((plugin) => plugin.id);
+
+    return pluginIds.length > 0 ? pluginIds : undefined;
+  }
+
+  const env = params.env ?? process.env;
+  const pluginIds = resolvePluginContributionOwners({
+    config: params.config,
+    workspaceDir: params.workspaceDir,
+    env,
+    contribution: "cliBackends",
+    matches: (backendId) => normalizeProviderId(backendId) === normalizedBackend,
+    includeDisabled: true,
+  });
+
+  const deduped = dedupeSortedPluginIds(pluginIds);
+  return deduped.length > 0 ? deduped : undefined;
+}
+
+export function resolveOwningPluginIdsForProviderRef(params: {
+  provider: string;
+  config?: PluginLoadOptions["config"];
+  workspaceDir?: string;
+  env?: PluginLoadOptions["env"];
+  manifestRegistry?: PluginManifestRegistry;
+}): string[] | undefined {
+  return (
+    resolveOwningPluginIdsForProvider(params) ??
+    resolveOwningPluginIdsForCliBackend({
+      backend: params.provider,
+      config: params.config,
+      workspaceDir: params.workspaceDir,
+      env: params.env,
+      manifestRegistry: params.manifestRegistry,
+    })
+  );
 }
 
 export function resolveOwningPluginIdsForModelRef(params: {
@@ -565,13 +608,23 @@ export function resolveOwningPluginIdsForModelRef(params: {
   }
 
   if (parsed.provider) {
-    return resolveOwningPluginIdsForProvider({
+    const providerOwners = resolveOwningPluginIdsForProvider({
       provider: parsed.provider,
       config: params.config,
       workspaceDir: params.workspaceDir,
       env: params.env,
       manifestRegistry: params.manifestRegistry,
     });
+    return (
+      providerOwners ??
+      resolveOwningPluginIdsForCliBackend({
+        backend: parsed.provider,
+        config: params.config,
+        workspaceDir: params.workspaceDir,
+        env: params.env,
+        manifestRegistry: params.manifestRegistry,
+      })
+    );
   }
 
   const manifestRegistry = resolveManifestRegistry({

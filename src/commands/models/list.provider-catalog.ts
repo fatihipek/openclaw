@@ -25,7 +25,7 @@ import {
 } from "../../plugins/provider-discovery.js";
 import {
   resolveBundledProviderCompatPluginIds,
-  resolveOwningPluginIdsForProvider,
+  resolveOwningPluginIdsForProviderRef,
 } from "../../plugins/providers.js";
 import type { ProviderPlugin } from "../../plugins/types.js";
 
@@ -125,7 +125,7 @@ export async function resolveProviderCatalogPluginIdsForFilter(params: {
   if (installedIndexPluginIds) {
     return installedIndexPluginIds;
   }
-  const manifestPluginIds = resolveOwningPluginIdsForProvider({
+  const manifestPluginIds = resolveOwningPluginIdsForProviderRef({
     provider: providerFilter,
     config: params.cfg,
     env: params.env,

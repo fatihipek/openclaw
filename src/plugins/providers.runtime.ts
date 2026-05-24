@@ -18,8 +18,8 @@ import {
   resolveDiscoveredProviderPluginIds,
   resolveEnabledProviderPluginIds,
   resolveBundledProviderCompatPluginIds,
-  resolveOwningPluginIdsForProvider,
   resolveOwningPluginIdsForModelRefs,
+  resolveOwningPluginIdsForProviderRef,
   withBundledProviderVitestCompat,
 } from "./providers.js";
 import { getActivePluginRegistryWorkspaceDir } from "./runtime.js";
@@ -73,21 +73,9 @@ function resolveExplicitProviderOwnerPluginIds(params: {
         if (apiOwnerPluginIds.length > 0) {
           return apiOwnerPluginIds;
         }
-        const legacyApiOwnerPluginIds = resolveOwningPluginIdsForProvider({
-          provider: apiOwnerHint,
-          config: params.config,
-          workspaceDir: params.workspaceDir,
-          env: params.env,
-          manifestRegistry: params.pluginMetadataSnapshot?.manifestRegistry,
-        });
-        if (legacyApiOwnerPluginIds?.length) {
-          return legacyApiOwnerPluginIds;
-        }
       }
-      // Keep legacy provider/CLI-backend ownership working until every owner is
-      // expressible through activation descriptors.
       return (
-        resolveOwningPluginIdsForProvider({
+        resolveOwningPluginIdsForProviderRef({
           provider,
           config: params.config,
           workspaceDir: params.workspaceDir,
