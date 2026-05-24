@@ -22,7 +22,7 @@ import type {
 import type {
   Api,
   AssistantMessageEvent,
-  AssistantMessageEventStream,
+  AssistantMessageEventStreamContract,
   Context,
   ImageContent,
   Model,
@@ -59,11 +59,11 @@ import type {
 import type { SlashCommandInfo } from "../slash-commands.js";
 import type { SourceInfo } from "../source-info.js";
 import type { BuildSystemPromptOptions } from "../system-prompt.js";
-import type { BashOperations } from "../tools/bash.js";
-import type { EditToolDetails } from "../tools/edit.js";
+import type { BashOperations } from "../tools/bash-operations.js";
 import type {
   BashToolDetails,
   BashToolInput,
+  EditToolDetails,
   EditToolInput,
   FindToolDetails,
   FindToolInput,
@@ -74,7 +74,7 @@ import type {
   ReadToolDetails,
   ReadToolInput,
   WriteToolInput,
-} from "../tools/index.js";
+} from "../tools/tool-contracts.js";
 
 export type { ExecOptions, ExecResult } from "../exec.js";
 export type { BuildSystemPromptOptions } from "../system-prompt.js";
@@ -1404,7 +1404,7 @@ export interface ProviderConfig {
     model: Model,
     context: Context,
     options?: SimpleStreamOptions,
-  ) => AssistantMessageEventStream;
+  ) => AssistantMessageEventStreamContract;
   /** Custom headers to include in requests. */
   headers?: Record<string, string>;
   /** If true, adds Authorization: Bearer header with the resolved API key. */

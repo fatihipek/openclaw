@@ -1065,11 +1065,11 @@ function buildTranslationBatches(items: readonly TranslationBatchItem[]): Transl
 export function resolveTranslationModel(): Model {
   const provider = resolveKnownTranslationProvider();
   const modelId = resolveConfiguredModel();
-  const model = getModel(provider, modelId as never);
+  const model = getModel(provider, modelId);
   if (!model) {
     throw new Error(`Unknown built-in model: ${provider}/${modelId}`);
   }
-  return model as Model;
+  return model;
 }
 
 class TranslationClient {

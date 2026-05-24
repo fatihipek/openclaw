@@ -12,7 +12,7 @@ import { resetApiProviders } from "../../llm/providers/register-builtins.js";
 import {
   type AnthropicMessagesCompat,
   type Api,
-  type AssistantMessageEventStream,
+  type AssistantMessageEventStreamContract,
   type Context,
   type Model,
   type OpenAICompletionsCompat,
@@ -234,10 +234,7 @@ function mergeCompat(
   }
 
   const base = baseCompat;
-  const override = overrideCompat as
-    | OpenAICompletionsCompat
-    | OpenAIResponsesCompat
-    | AnthropicMessagesCompat;
+  const override = overrideCompat;
   const merged = { ...base, ...override } as
     | OpenAICompletionsCompat
     | OpenAIResponsesCompat
@@ -812,7 +809,7 @@ export interface ProviderConfigInput {
     model: Model,
     context: Context,
     options?: SimpleStreamOptions,
-  ) => AssistantMessageEventStream;
+  ) => AssistantMessageEventStreamContract;
   headers?: Record<string, string>;
   authHeader?: boolean;
   /** OAuth provider for /login support */
