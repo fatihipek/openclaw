@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 import {
-  appendFileSync,
   closeSync,
   existsSync,
   mkdirSync,
@@ -9,10 +8,14 @@ import {
   readFileSync,
   readSync,
   statSync,
-  writeFileSync,
 } from "node:fs";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
+import {
+  appendJsonlEntriesSync,
+  appendJsonlEntrySync,
+  writeJsonlEntriesSync,
+} from "../../config/sessions/transcript-jsonl.js";
 import type { ImageContent, Message, TextContent } from "../../llm/types.js";
 import { getAgentDir as getDefaultAgentDir, getSessionsDir } from "../config.js";
 import {
@@ -797,8 +800,7 @@ export class SessionManager {
     if (!this.shouldPersist || !this.sessionFile) {
       return;
     }
-    const content = `${this.fileEntries.map((e) => JSON.stringify(e)).join("\n")}\n`;
-    writeFileSync(this.sessionFile, content);
+    writeJsonlEntriesSync(this.sessionFile, this.fileEntries);
   }
 
   isPersisted(): boolean {
@@ -836,12 +838,10 @@ export class SessionManager {
     }
 
     if (!this.flushed) {
-      for (const e of this.fileEntries) {
-        appendFileSync(this.sessionFile, `${JSON.stringify(e)}\n`);
-      }
+      appendJsonlEntriesSync(this.sessionFile, this.fileEntries);
       this.flushed = true;
     } else {
-      appendFileSync(this.sessionFile, `${JSON.stringify(entry)}\n`);
+      appendJsonlEntrySync(this.sessionFile, entry);
     }
   }
 
@@ -1380,12 +1380,12 @@ export class SessionManager {
       cwd: targetCwd,
       parentSession: sourcePath,
     };
-    appendFileSync(newSessionFile, `${JSON.stringify(newHeader)}\n`);
+    appendJsonlEntrySync(newSessionFile, newHeader);
 
     // Copy all non-header entries from source
     for (const entry of sourceEntries) {
       if (entry.type !== "session") {
-        appendFileSync(newSessionFile, `${JSON.stringify(entry)}\n`);
+        appendJsonlEntrySync(newSessionFile, entry);
       }
     }
 
