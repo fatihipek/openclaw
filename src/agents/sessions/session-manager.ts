@@ -16,6 +16,7 @@ import {
   appendJsonlEntrySync,
   writeJsonlEntriesSync,
 } from "../../config/sessions/transcript-jsonl.js";
+import { CURRENT_SESSION_VERSION } from "../../config/sessions/version.js";
 import type { ImageContent, Message, TextContent } from "../../llm/types.js";
 import { getAgentDir as getDefaultAgentDir, getSessionsDir } from "../config.js";
 import {
@@ -26,7 +27,7 @@ import {
 } from "../runtime/index.js";
 import { type BashExecutionMessage, type CustomMessage } from "./messages.js";
 
-export const CURRENT_SESSION_VERSION = 3;
+export { CURRENT_SESSION_VERSION };
 
 export interface SessionHeader {
   type: "session";
