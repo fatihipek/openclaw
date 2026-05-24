@@ -1,5 +1,5 @@
-import type { Model } from "openclaw/plugin-sdk/llm";
 import type { StreamFn as CoreStreamFn } from "../../../../packages/agent-core/src/llm.js";
+import type { Model } from "../../../llm/types.js";
 import {
   calculateContextTokens,
   compact as compactCore,
