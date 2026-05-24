@@ -2173,3 +2173,8 @@ jobs:
               exit 1
               ;;
           esac
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: openclaw-android-apk
+          path: apps/android/app/build/outputs/apk/play/debug/*.apk
